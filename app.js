@@ -26,11 +26,21 @@ mongoose.connect("mongodb://localhost:27017/todolistDB", {
   useNewUrlParser: true,
   useUnifiedTopology: true
 });
+
+// schema for each item
 const itemsSchema = new mongoose.Schema({
   name: String
 });
 const Item = mongoose.model("Item", itemsSchema);
 
+// schema for each list
+const listsSchema = new mongoose.Schema({
+  name: String,
+  items: [itemsSchema]
+});
+const List = mongoose.model("List", listsSchema);
+
+// default items in list
 const item1 = new Item({
   name: "Welcome to your todolist!"
 });
@@ -40,7 +50,6 @@ const item2 = new Item({
 const item3 = new Item({
   name: "<-- Hit this to delete an item."
 });
-
 const defaultItems = [item1, item2, item3];
 
 
@@ -53,28 +62,49 @@ const defaultItems = [item1, item2, item3];
 app.get("/", (req, res) => {
   const currentDay = date.getDate();
 
-  Item.find({}, function(err, foundItems){
-    if (foundItems.length === 0){
-      Item.insertMany(defaultItems, function(err){
-          if (err) {
-            console.log(err);
-          } else {
-            console.log("Successfully inserted default items.");
-          }
+  Item.find({}, function(err, foundItems) {
+    if (foundItems.length === 0) {
+      Item.insertMany(defaultItems, function(err) {
+        if (err) {
+          console.log(err);
+        } else {
+          console.log("Successfully inserted default items.");
+        }
       });
     } else {
-      res.render("list", {listTitle: currentDay, newItems: foundItems})
+      res.render("list", {
+        listTitle: currentDay,
+        newItems: foundItems
+      });
     }
   });
 });
 
+// custom route using express route parameters
 
-// /work route
-app.get("/work", (req, res) => {
-  res.render("list", {
-    listTitle: "Work List",
-    newItems: workItems
+app.get("/:customListName", function(req, res){
+  const customListName = req.params.customListName;
+  List.findOne({name: customListName}, function(err, foundList){
+    if (!err && !foundList){
+      // create a new list and save it in lists collection
+      const list = new List({
+        name: customListName,
+        items: defaultItems
+      });
+      list.save();
+      res.redirect("/" + customListName);
+    } else {
+      // retreive the list contents and show it on the page
+
+      res.render("list", {
+        listTitle: foundList.name,
+        newItems: foundList.items
+      });
+    }
   });
+
+
+
 });
 
 // /about route
@@ -85,7 +115,7 @@ app.get("/about", (req, res) => {
 //#########################################################
 
 app.post("/", (req, res) => {
-  const currentPage = req.body.list;
+  const currentList = req.body.list;
   const data = req.body.inputData;
   const newEnteredItem = new Item({
     name: data
@@ -95,8 +125,13 @@ app.post("/", (req, res) => {
 
 });
 
-app.post("/delete", function(req, res){
-  console.log(req.body);
+app.post("/delete", function(req, res) {
+  Item.findByIdAndDelete(req.body.checkbox, function(err) {
+    if (!err) {
+      console.log("Successfully deleted the selected item!");
+      res.redirect("/");
+    }
+  });
 });
 
 //#########################################################

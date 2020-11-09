@@ -1,6 +1,7 @@
 const express = require("express");
 const bodyParser = require("body-parser");
 const mongoose = require("mongoose");
+const _ = require("lodash");
 const app = express();
 const port = 3000;
 
@@ -14,15 +15,17 @@ app.set("view engine", "ejs");
 
 //#########################################################
 
-app.listen(port, () => {
+app.listen(port, function() {
   console.log("Server is running on port " + port);
 });
 
 //#########################################################
 
+// connect to mongoose with warning handling
 mongoose.connect("mongodb://localhost:27017/todolistDB", {
   useNewUrlParser: true,
-  useUnifiedTopology: true
+  useUnifiedTopology: true,
+  useFindAndModify: false
 });
 
 //#########################################################
@@ -45,6 +48,14 @@ const item3 = new Item({
 });
 const defaultItems = [item1, item2, item3];
 
+//#########################################################
+
+// lists schema and model
+const listSchema = new mongoose.Schema({
+  name: String,
+  items: [itemsSchema]
+});
+const List = mongoose.model("List", listSchema);
 
 
 //#########################################################
@@ -71,11 +82,29 @@ app.get("/", (req, res) => {
   });
 });
 
-// /work route
-app.get("/work", (req, res) => {
-  res.render("list", {
-    listTitle: "Work List",
-    newItems: workItems
+// dynamic route
+app.get("/:customListName", function(req, res) {
+  const customListName = _.capitalize(req.params.customListName);
+  List.findOne({
+    name: customListName
+  }, function(err, foundList) {
+    if (!err) {
+      if (!foundList) {
+        // create a new list
+        const list = new List({
+          name: customListName,
+          items: defaultItems
+        });
+        list.save();
+        res.redirect("/" + customListName);
+      } else {
+        // load an existing list
+        res.render("list", {
+          listTitle: foundList.name,
+          newItems: foundList.items
+        });
+      }
+    }
   });
 });
 
@@ -87,24 +116,49 @@ app.get("/about", (req, res) => {
 //#########################################################
 
 app.post("/", (req, res) => {
-  //const currentPage = req.body.list;
+  const listName = req.body.list;
   const inputData = req.body.inputData;
-  console.log(inputData);
   const inputItem = new Item({
     name: inputData
   });
-  inputItem.save();
-  res.redirect("/");
+  if (listName === "Today") {
+    item.save();
+    res.redirect("/");
+  } else {
+    List.findOne({
+      name: listName
+    }, function(err, foundList) {
+      foundList.items.push(inputItem);
+      foundList.save();
+      res.redirect("/" + listName);
+    });
+  }
 });
 
-app.post("/delete", function(req,res){
+// delete items from individual lists
+app.post("/delete", function(req, res) {
   const itemID = req.body.checkbox;
-  Item.findByIdAndDelete(itemID, function(err){
-    if (!err) {
-      console.log("Item deleted from DB.");
-    }
-  });
-  res.redirect("/");
+  const listName = req.body.listName;
+  if (listName === "Today") {
+    Item.findByIdAndDelete(itemID, function(err) {
+      if (!err) {
+        console.log("Item deleted from DB.");
+      }
+    });
+    res.redirect("/");
+  } else {
+    List.findOneAndUpdate({
+      name: listName
+    }, {
+      $pull: {
+        items: {
+          _id: itemID
+        }
+      }
+    }, function(err, foundList) {
+      if (!err) {
+        res.redirect("/" + listName);
+      }
+    })
+  }
 });
-
-//#########################################################
